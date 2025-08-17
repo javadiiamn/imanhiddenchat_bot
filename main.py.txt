@@ -1,0 +1,78 @@
+import logging
+import os
+from dotenv import load_dotenv
+
+from telegram import Update
+from telegram.ext import (
+    Application, CommandHandler, MessageHandler, ContextTypes, filters
+)
+
+# --- تنظیمات اولیه ---
+logging.basicConfig(
+    format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+    level=logging.INFO
+)
+logger = logging.getLogger(name)
+
+# --- خواندن تنظیمات از .env ---
+load_dotenv()
+TOKEN = os.getenv("BOT_TOKEN")
+ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
+
+if not TOKEN or not ADMIN_ID:
+    raise RuntimeError("BOT_TOKEN یا ADMIN_ID در فایل .env تنظیم نشده!")
+
+# --- هندلرها ---
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    logger.info("User %s (%s) started the bot. id=%s",
+                user.full_name, user.username, user.id)
+    await update.message.reply_text(
+        "سلام! 👋\n"
+        "اینجا هر حرفی داری بنویس؛ من مستقیم و ناشناس می‌فرستم برای ایمان.\n"
+        "برای لغو ارسال خودکار، فقط /stop رو بزن."
+    )
+
+async def stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("باشه. هر وقت خواستی دوباره /start رو بزن 🙂")
+
+async def feedback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """هر پیام متنی رو به ایمان ارسال می‌کنیم"""
+    if not update.message or not update.message.text:
+        return  # فقط متن‌ها رو می‌گیریم
+
+    user = update.effective_user
+    text = update.message.text
+
+    # ارسال به ایمان
+    try:
+        await context.bot.send_message(
+            chat_id=ADMIN_ID,
+            text=(
+                "📩 *پیام جدید*\n"
+                f"👤 از: {user.full_name} "
+                f"{'(@'+user.username+')' if user.username else ''}\n"
+                f"🆔 آیدی: {user.id}\n\n"
+                f"✍️ {text}"
+            ),
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        logger.exception("ارسال به ادمین ناموفق بود: %s", e)
+
+    # جواب به کاربر
+    await update.message.reply_text("مرسی! پیامت ثبت شد ✅")
+
+# --- اجرای برنامه ---
+def main():
+    app = Application.builder().token(TOKEN).build()
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("stop", stop))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, feedback))
+
+    logger.info("Bot is up and running...")
+    app.run_polling(allowed_updates=Update.ALL_TYPES)
+
+if name == "main":
+    main()
